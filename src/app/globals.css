@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------
+   Colour theme — defined once here and reused everywhere as classes
+   like bg-surface, text-muted, border-border, bg-accent, etc.
+   ---------------------------------------------------------------- */
+:root {
+  --background: #f6f5f2; /* warm off-white page background */
+  --surface: #ffffff; /* cards, header, inputs */
+  --foreground: #1c1917; /* main text */
+  --muted: #78716c; /* secondary text */
+  --border: #e7e5e4; /* hairlines */
+  --accent: #4f46e5; /* primary buttons / highlights */
+  --accent-foreground: #ffffff; /* text on the accent colour */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #18181b;
+    --surface: #232326;
+    --foreground: #f5f5f4;
+    --muted: #a1a1aa;
+    --border: #34343a;
+    --accent: #818cf8;
+    --accent-foreground: #18181b;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* ----------------------------------------------------------------
+   Reusable building blocks. Use these class names in the pages so
+   every button / input / card looks the same.
+   ---------------------------------------------------------------- */
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-surface shadow-sm;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm
+      outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed
+      bg-accent text-accent-foreground hover:opacity-90 shadow-sm;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed
+      border border-border bg-surface hover:bg-foreground/[0.04];
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed
+      border border-red-300 text-red-600 hover:bg-red-50;
+  }
+}
