@@ -49,6 +49,25 @@ export default function RootLayout({
               >
                 Outfits
               </Link>
+              <Link
+                href="/suggest"
+                className="px-3 py-1.5 rounded-lg hover:bg-foreground/[0.05] transition"
+              >
+                What to wear 🌧️
+                
+              </Link>
+              <Link
+  href="/stats"
+  className="px-3 py-1.5 rounded-lg hover:bg-foreground/[0.05] transition"
+>
+  Stats
+</Link>
+              <Link
+                href="/calendar"
+                className="px-3 py-1.5 rounded-lg hover:bg-foreground/[0.05] transition"
+              >
+                Calendar
+              </Link>
               <Link href="/add" className="btn-primary">
                 <span className="text-base leading-none">+</span> Add item
               </Link>

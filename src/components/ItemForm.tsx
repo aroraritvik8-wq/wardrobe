@@ -5,6 +5,22 @@ import { useRouter } from "next/navigation";
 import type { Item } from "@/lib/types";
 import { CATEGORIES, SEASONS } from "@/lib/constants";
 
+// Shrink a picked image to at most `maxSize` pixels on its longest side.
+// Smaller images make background removal much faster.
+async function downscaleImage(file: File, maxSize: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
+  return new Promise<Blob>((resolve) =>
+    canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.9)
+  );
+}
+
 // This one form is used for BOTH adding a new item and editing an existing one.
 // If `initial` is given, we're editing; if not, we're adding.
 export default function ItemForm({ initial }: { initial?: Item }) {
@@ -21,12 +37,38 @@ export default function ItemForm({ initial }: { initial?: Item }) {
 
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
-  // Show a small preview when the user picks a photo.
-  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  // When a photo is picked, remove its background automatically (in the browser),
+  // then use the cut-out version for the preview and the upload.
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
+    if (!f) {
+      setFile(null);
+      setPreview(initial?.image_url ?? null);
+      return;
+    }
+    // Show the original right away so there's instant feedback.
     setFile(f);
-    setPreview(f ? URL.createObjectURL(f) : initial?.image_url ?? null);
+    setPreview(URL.createObjectURL(f));
+    setProcessing(true);
+    try {
+      // Shrink the photo first (much faster), then load the library and remove
+      // the background using the lighter "fp16" model for speed.
+      const small = await downscaleImage(f, 1024);
+      const { removeBackground } = await import("@imgly/background-removal");
+      const blob = await removeBackground(small, { model: "isnet_fp16" });
+      const cleaned = new File([blob], f.name.replace(/\.[^.]+$/, "") + ".png", {
+        type: "image/png",
+      });
+      setFile(cleaned);
+      setPreview(URL.createObjectURL(cleaned));
+    } catch (err) {
+      // If it fails, keep the original photo (already set above).
+      console.error("Background removal failed:", err);
+    } finally {
+      setProcessing(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -97,7 +139,11 @@ export default function ItemForm({ initial }: { initial?: Item }) {
             )}
           </div>
           <label className="btn-ghost cursor-pointer">
-            {preview ? "Change photo" : "Choose photo"}
+            {processing
+              ? "Removing background…"
+              : preview
+                ? "Change photo"
+                : "Choose photo"}
             <input
               type="file"
               accept="image/*"
@@ -106,6 +152,12 @@ export default function ItemForm({ initial }: { initial?: Item }) {
             />
           </label>
         </div>
+        {processing && (
+          <p className="text-xs text-muted mt-2">
+            Removing the background… the very first photo is slowest (it downloads
+            the model once), then it&apos;s quick.
+          </p>
+        )}
       </div>
 
       <label className="block">
@@ -164,7 +216,7 @@ export default function ItemForm({ initial }: { initial?: Item }) {
       </label>
 
       <div className="flex gap-2 pt-1">
-        <button type="submit" disabled={saving} className="btn-primary">
+        <button type="submit" disabled={saving || processing} className="btn-primary">
           {saving ? "Saving…" : editing ? "Save changes" : "Add item"}
         </button>
         <button
