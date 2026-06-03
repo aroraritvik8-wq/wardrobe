@@ -12,6 +12,8 @@ export type Item = {
   image_url: string | null;
   cutout_url?: string | null;
   mannequin_ok?: boolean | null;
+  for_sale?: boolean | null;
+  price?: number | null;
   times_worn: number;
   created_at: string;
 };

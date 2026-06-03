@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { Item } from "@/lib/types";
 import ItemCard from "@/components/ItemCard";
 import { useItemModal, ITEMS_CHANGED } from "@/components/ItemModalProvider";
+import { Shuffle } from "lucide-react";
 
 const LABELS: Record<string, string> = {
   top: "Tops",
@@ -42,6 +43,8 @@ function Browse() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  const [sort, setSort] = useState<"recent" | "oldest" | "random">("recent");
+  const [shuffleNonce, setShuffleNonce] = useState(0);
   const { openAdd } = useItemModal();
 
   // Re-fetch the grid whenever an item is added/edited via the modal.
@@ -59,13 +62,25 @@ function Browse() {
     fetch(`/api/items?${params.toString()}`)
       .then((r) => r.json())
       .then((d) => {
-        setItems(shuffleArray(Array.isArray(d) ? d : []));
+        // API returns newest-first; keep that raw order and sort in the view.
+        setItems(Array.isArray(d) ? d : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [category, q, reload]);
 
-  const shuffle = () => setItems((prev) => shuffleArray(prev));
+  // The displayed order, derived from the chosen sort.
+  const displayed = useMemo(() => {
+    if (sort === "oldest") return [...items].reverse();
+    if (sort === "random") return shuffleArray(items);
+    return items; // "recent" = API order (newest first)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, sort, shuffleNonce]);
+
+  const shuffle = () => {
+    setSort("random");
+    setShuffleNonce((n) => n + 1);
+  };
 
   const heading = category
     ? LABELS[category] ?? category
@@ -75,17 +90,26 @@ function Browse() {
   const filtered = Boolean(category || q);
 
   return (
-    <div>
+    <div className="max-w-[1880px] mx-auto">
       <div className="flex items-center justify-between gap-3 mb-4 min-h-9">
-        {filtered ? <h1 className="text-xl font-bold">{heading}</h1> : <span />}
-        <div className="flex items-center gap-3">
+        <h1 className="text-xl font-bold">{heading}</h1>
+        <div className="flex items-center gap-2">
           {filtered && (
-            <Link href="/" className="text-accent text-[15px] font-semibold hover:underline">
+            <Link href="/" className="text-accent text-[15px] font-semibold hover:underline mr-1">
               Clear
             </Link>
           )}
-          <button onClick={shuffle} disabled={loading || items.length < 2} className="btn-ghost">
-            🔀 Shuffle
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as "recent" | "oldest" | "random")}
+            className="rounded-md bg-surface-3 px-3 py-2 text-[14px] font-semibold outline-none cursor-pointer"
+          >
+            <option value="recent">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="random">Random</option>
+          </select>
+          <button onClick={shuffle} disabled={loading || items.length < 2} className="btn-ghost gap-1.5">
+            <Shuffle size={16} /> Shuffle
           </button>
         </div>
       </div>
@@ -108,8 +132,8 @@ function Browse() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-          {items.map((item) => (
+        <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-x-2 gap-y-14">
+          {displayed.map((item) => (
             <ItemCard key={item.id} item={item} />
           ))}
         </div>
@@ -120,7 +144,7 @@ function Browse() {
 
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
       {Array.from({ length: 12 }).map((_, i) => (
         <div key={i} className="animate-pulse">
           <div className="aspect-square rounded-lg bg-foreground/[0.06]" />

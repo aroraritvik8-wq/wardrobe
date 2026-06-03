@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Item } from "@/lib/types";
 import { useItemModal, ITEMS_CHANGED } from "@/components/ItemModalProvider";
+import { Shirt, Pencil, Trash2, ImageOff } from "lucide-react";
 
 export default function ItemDetailPage() {
   // useParams reads the ":id" out of the URL (/items/5 -> id = "5").
@@ -82,7 +83,7 @@ export default function ItemDetailPage() {
               className="w-full h-full object-cover"
             />
           ) : (
-            <span className="text-7xl opacity-40">🧺</span>
+            <ImageOff className="opacity-40" size={64} />
           )}
         </div>
 
@@ -97,7 +98,7 @@ export default function ItemDetailPage() {
           </div>
 
           <div className="card p-4 mt-6 flex items-center gap-3">
-            <span className="text-2xl">👕</span>
+            <Shirt size={22} className="text-muted" />
             <div>
               <p className="text-2xl font-bold leading-none">{item.times_worn}</p>
               <p className="text-xs text-muted mt-1">times worn</p>
@@ -109,10 +110,10 @@ export default function ItemDetailPage() {
 
           <div className="flex flex-wrap gap-2 mt-6">
             <button onClick={() => openEdit(item)} className="btn-ghost">
-              ✏️ Edit
+              <Pencil size={16} /> Edit
             </button>
             <button onClick={remove} className="btn-danger">
-              🗑️ Delete
+              <Trash2 size={16} /> Delete
             </button>
           </div>
         </div>
