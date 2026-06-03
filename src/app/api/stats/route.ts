@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 import type { Item } from "@/lib/types";
 
 export async function GET() {
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   // 1) Get every item.
   const { data, error } = await supabase.from("items").select("*");

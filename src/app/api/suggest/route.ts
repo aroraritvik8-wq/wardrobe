@@ -5,7 +5,7 @@
 // 3) Picks an outfit from your wardrobe that suits the weather.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 import type { Item } from "@/lib/types";
 
 // Turn Open-Meteo's numeric weather code into words + an emoji + "is it wet?".
@@ -82,19 +82,28 @@ export async function GET(req: NextRequest) {
   const { description, emoji, wet } = describeWeather(wd.current.weather_code);
 
   const season = targetSeason(tempC);
-  const needOuter = tempC < 14 || wet; // cold or wet -> suggest a coat/jacket
+  const needOuter = tempC <= 15 || wet; // cool/cold or wet -> suggest a coat/jacket
 
-  // Get wardrobe items that suit this season (or are tagged "all").
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("items")
-    .select("*")
-    .in("season", [season, "all"]);
+  // Get wardrobe items that suit this season (or are tagged "all"), preferring
+  // clean background-removed photos so the whole outfit has the cut-out look.
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const [seasonRes, outerRes] = await Promise.all([
+    supabase.from("items").select("*").in("season", [season, "all"]),
+    // Jackets are scarce — allow them from any season when it's cold/wet.
+    supabase.from("items").select("*").eq("category", "outerwear"),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (seasonRes.error) {
+    return NextResponse.json({ error: seasonRes.error.message }, { status: 500 });
   }
-  const items = (data ?? []) as Item[];
+  const seasonAll = (seasonRes.data ?? []) as Item[];
+  const seasonTagged = seasonAll.filter((i) => i.mannequin_ok);
+  const seasonPool = (seasonTagged.length > 0 ? seasonTagged : seasonAll).filter(
+    (i) => i.category !== "outerwear"
+  );
+  const outerPool = ((outerRes.data ?? []) as Item[]).filter((i) => i.mannequin_ok);
+  const items = [...seasonPool, ...outerPool];
 
   // Pick one random item from a category (or null if you own none).
   const pick = (category: string) => {
@@ -108,10 +117,17 @@ export async function GET(req: NextRequest) {
     const outer = pick("outerwear");
     if (outer) picks.push(outer);
   }
-  for (const category of ["top", "bottom", "shoes"]) {
+  for (const category of ["top", "bottom"]) {
     const p = pick(category);
     if (p) picks.push(p);
   }
+  // Shoes — avoid open footwear (sandals/slides) when it's cold or wet.
+  let shoes = items.filter((i) => i.category === "shoes");
+  if (needOuter) {
+    const closed = shoes.filter((i) => !/sandal|slide|flip|flop|thong|espadrille/i.test(i.name));
+    if (closed.length) shoes = closed;
+  }
+  if (shoes.length) picks.push(shoes[Math.floor(Math.random() * shoes.length)]);
 
   return NextResponse.json({
     place,

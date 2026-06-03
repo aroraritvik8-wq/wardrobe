@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Item } from "@/lib/types";
+import Mannequin from "@/components/Mannequin";
 
 type Entry = {
   id: number;
@@ -9,6 +10,17 @@ type Entry = {
   planned: boolean;
   item_id: number;
   items: { name: string; image_url: string | null } | { name: string; image_url: string | null }[] | null;
+};
+
+type DayWeather = {
+  available: boolean;
+  tempC?: number;
+  lowC?: number;
+  description?: string;
+  emoji?: string;
+  wet?: boolean;
+  needOuter?: boolean;
+  outfits?: { men: Item[]; women: Item[] };
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -25,6 +37,10 @@ export default function CalendarPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [dayWx, setDayWx] = useState<DayWeather | null>(null);
+  const [wxLoading, setWxLoading] = useState(false);
+  const [forecast, setForecast] = useState<Record<string, { tempC: number; emoji: string }>>({});
 
   const monthKey = `${year}-${pad(month + 1)}`;
 
@@ -38,6 +54,47 @@ export default function CalendarPage() {
   useEffect(() => {
     fetch("/api/items").then((r) => r.json()).then((d) => setItems(Array.isArray(d) ? d : []));
   }, []);
+
+  // Ask the browser for the user's location once, so we can show the forecast.
+  useEffect(() => { enableWeather(); }, []);
+
+  // Once we know the location, pull weather for the whole visible month.
+  // (Past days = recorded weather, next ~16 days = forecast.)
+  useEffect(() => {
+    if (!coords) return;
+    const dim = new Date(year, month + 1, 0).getDate();
+    const start = dateStr(year, month, 1);
+    const end = dateStr(year, month, dim);
+    fetch(`/api/forecast?lat=${coords.lat}&lon=${coords.lon}&start=${start}&end=${end}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, { tempC: number; emoji: string }> = {};
+        for (const day of d.days ?? []) map[day.date] = { tempC: day.tempC, emoji: day.emoji };
+        setForecast(map);
+      })
+      .catch(() => {});
+  }, [coords, year, month]);
+
+  // Whenever the chosen day (or our location) changes, fetch that day's forecast.
+  useEffect(() => {
+    if (!selected || !coords) { setDayWx(null); return; }
+    setWxLoading(true);
+    fetch(`/api/day-weather?lat=${coords.lat}&lon=${coords.lon}&date=${selected}`)
+      .then((r) => r.json())
+      .then((d) => setDayWx(d))
+      .catch(() => setDayWx(null))
+      .finally(() => setWxLoading(false));
+  }, [selected, coords]);
+
+  // Pop the browser's location prompt; store the coordinates if allowed.
+  function enableWeather() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }
 
   // group entries by their date
   const byDate: Record<string, Entry[]> = {};
@@ -59,8 +116,11 @@ export default function CalendarPage() {
     setMonth(m); setYear(y); setSelected(null);
   }
 
-  async function addEntry(item_id: number, planned: boolean) {
+  async function addEntry(item_id: number) {
     if (!selected) return;
+    // Decide automatically from the date: a future day is "planned",
+    // today or a past day is "worn".
+    const planned = selected > today;
     await fetch("/api/calendar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -72,8 +132,28 @@ export default function CalendarPage() {
     await fetch(`/api/calendar/${id}`, { method: "DELETE" });
     loadEntries();
   }
+  // Add every item of a suggested outfit to the selected day at once.
+  async function planOutfit(list: Item[]) {
+    if (!selected || !list?.length) return;
+    const planned = selected > today;
+    await Promise.all(
+      list.map((it) =>
+        fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: selected, item_id: it.id, planned }),
+        })
+      )
+    );
+    loadEntries();
+  }
 
   const selectedEntries = selected ? byDate[selected] ?? [] : [];
+  // The day's logged items, looked up in the wardrobe so we have category +
+  // cut-out for the stacked outfit view.
+  const dayItems = selectedEntries
+    .map((e) => items.find((it) => it.id === e.item_id))
+    .filter((it): it is Item => Boolean(it));
 
   return (
     <div>
@@ -105,7 +185,14 @@ export default function CalendarPage() {
               onClick={() => setSelected(ds)}
               className={`card aspect-square p-1.5 text-left flex flex-col ${isSel ? "ring-2 ring-accent" : ""}`}
             >
-              <span className={`text-xs ${isToday ? "font-bold text-accent" : "text-muted"}`}>{d}</span>
+              <div className="flex items-center justify-between gap-1">
+                <span className={`text-xs ${isToday ? "font-bold text-accent" : "text-muted"}`}>{d}</span>
+                {forecast[ds] && (
+                  <span className="text-[10px] leading-none text-muted whitespace-nowrap">
+                    {forecast[ds].emoji}{forecast[ds].tempC}°
+                  </span>
+                )}
+              </div>
               <div
                 className="grid gap-0.5 mt-1 flex-1 min-h-0"
                 style={{
@@ -134,6 +221,70 @@ export default function CalendarPage() {
         <div className="card p-4 mt-6">
           <h2 className="font-semibold mb-3">{selected}</h2>
 
+          {/* Weather forecast + outfit suggestion for this day */}
+          {!coords ? (
+            <button onClick={enableWeather} className="btn-ghost text-sm mb-4">
+              📍 Show weather &amp; outfit ideas
+            </button>
+          ) : wxLoading ? (
+            <p className="text-muted text-sm mb-4">Checking the forecast…</p>
+          ) : dayWx && dayWx.available ? (
+            <div className="rounded-xl bg-surface-2 p-3 mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{dayWx.emoji}</span>
+                <div>
+                  <p className="text-sm font-semibold">
+                    {dayWx.tempC}°{" "}
+                    <span className="text-muted font-normal">/ {dayWx.lowC}°</span> ·{" "}
+                    {dayWx.description}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {dayWx.needOuter ? "Layer up — bring a jacket." : "Mild — no coat needed."}
+                  </p>
+                </div>
+              </div>
+              {dayWx.outfits &&
+                (dayWx.outfits.men.length > 0 || dayWx.outfits.women.length > 0) && (
+                  <>
+                    <p className="text-xs text-muted mt-4 mb-2">
+                      Suggested looks for this weather:
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col">
+                        <Mannequin items={dayWx.outfits.men} gender="men" label="Men's" />
+                        <button
+                          onClick={() => planOutfit(dayWx.outfits!.men)}
+                          className="btn-ghost w-full text-xs mt-auto"
+                        >
+                          + Plan this
+                        </button>
+                      </div>
+                      <div className="flex flex-col">
+                        <Mannequin items={dayWx.outfits.women} gender="women" label="Women's" />
+                        <button
+                          onClick={() => planOutfit(dayWx.outfits!.women)}
+                          className="btn-ghost w-full text-xs mt-auto"
+                        >
+                          + Plan this
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+            </div>
+          ) : dayWx && !dayWx.available ? (
+            <p className="text-muted text-xs mb-4">
+              No forecast for this day (only the next ~16 days are available).
+            </p>
+          ) : null}
+
+          {/* The day's outfit, shown as the same neat stack */}
+          {dayItems.length > 0 && (
+            <div className="flex justify-center mb-4">
+              <Mannequin items={dayItems} showList={false} />
+            </div>
+          )}
+
           {selectedEntries.length === 0 ? (
             <p className="text-muted text-sm mb-4">Nothing logged for this day yet.</p>
           ) : (
@@ -150,7 +301,24 @@ export default function CalendarPage() {
                     </div>
                     <span className="text-sm flex-1 font-medium">{it?.name ?? "Item"}</span>
                     <span className="text-xs text-muted">{e.planned ? "Planned" : "Worn"}</span>
-                    <button onClick={() => removeEntry(e.id)} className="text-red-600 text-sm">✕</button>
+                    <button
+                      onClick={() => removeEntry(e.id)}
+                      aria-label="Remove from this day"
+                      title="Remove from this day"
+                      className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:bg-red-50 hover:text-red-600 transition"
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      >
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 );
               })}
@@ -158,7 +326,7 @@ export default function CalendarPage() {
           )}
 
           <div className="border-t border-border pt-4">
-            <AddRow items={items} onAdd={addEntry} />
+            <AddRow items={items} onAdd={addEntry} planned={selected > today} />
           </div>
         </div>
       )}
@@ -166,9 +334,8 @@ export default function CalendarPage() {
   );
 }
 
-function AddRow({ items, onAdd }: { items: Item[]; onAdd: (id: number, planned: boolean) => void }) {
+function AddRow({ items, onAdd, planned }: { items: Item[]; onAdd: (id: number) => void; planned: boolean }) {
   const [search, setSearch] = useState("");
-  const [planned, setPlanned] = useState(false);
 
   // Filter by the search box (shows everything; search to narrow a big wardrobe).
   const filtered = items.filter((it) =>
@@ -177,7 +344,7 @@ function AddRow({ items, onAdd }: { items: Item[]; onAdd: (id: number, planned: 
 
   return (
     <div>
-      {/* search + worn/planned choice */}
+      {/* search box + a note showing how items will be saved (auto from the date) */}
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <input
           className="field flex-1 min-w-40"
@@ -185,14 +352,12 @@ function AddRow({ items, onAdd }: { items: Item[]; onAdd: (id: number, planned: 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
-          className="field w-auto"
-          value={planned ? "planned" : "worn"}
-          onChange={(e) => setPlanned(e.target.value === "planned")}
-        >
-          <option value="worn">Worn</option>
-          <option value="planned">Planned</option>
-        </select>
+        <span className="text-xs text-muted">
+          Tap to add as{" "}
+          <span className="font-medium text-foreground">
+            {planned ? "Planned" : "Worn"}
+          </span>
+        </span>
       </div>
 
       {/* tap a photo to add it to the day */}
@@ -204,7 +369,7 @@ function AddRow({ items, onAdd }: { items: Item[]; onAdd: (id: number, planned: 
             <button
               key={it.id}
               type="button"
-              onClick={() => onAdd(it.id, planned)}
+              onClick={() => onAdd(it.id)}
               className="card overflow-hidden text-left hover:ring-2 hover:ring-accent transition"
             >
               <div className="aspect-square bg-foreground/[0.04] overflow-hidden">

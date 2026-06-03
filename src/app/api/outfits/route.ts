@@ -6,13 +6,14 @@
 // one outfit has many items, and one item can be in many outfits.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 import type { Item } from "@/lib/types";
 
 // GET = list outfits. We ask Supabase to also pull in the linked items in one
 // go using a nested select through the join table.
 export async function GET() {
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const { data, error } = await supabase
     .from("outfits")
@@ -47,7 +48,8 @@ export async function GET() {
 
 // POST = create an outfit, then link it to each chosen item.
 export async function POST(req: NextRequest) {
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const body = await req.json();
   const { name, item_ids } = body as { name?: string; item_ids?: number[] };
 
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
   // Step 1: create the outfit row.
   const { data: outfit, error: outfitError } = await supabase
     .from("outfits")
-    .insert({ name })
+    .insert({ name, user_id: user.id })
     .select()
     .single();
 
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
   const links = item_ids.map((item_id) => ({
     outfit_id: outfit.id,
     item_id,
+    user_id: user.id,
   }));
 
   const { error: linkError } = await supabase.from("outfit_items").insert(links);

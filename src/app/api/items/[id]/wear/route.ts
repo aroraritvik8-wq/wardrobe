@@ -2,13 +2,14 @@
 // Used by the "Wore it today" button (wear tracking).
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params;
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   // Read the current count, add one, then save it back.
   const { data: current, error: readError } = await supabase

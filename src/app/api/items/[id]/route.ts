@@ -6,14 +6,15 @@
 // In Next.js 16 the `params` value arrives as a Promise, so we `await` it.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 
 type Context = { params: Promise<{ id: string }> };
 
 // GET = read one item.
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params;
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const { data, error } = await supabase
     .from("items")
@@ -30,10 +31,11 @@ export async function GET(_req: NextRequest, ctx: Context) {
 // PATCH = update some fields of one item.
 export async function PATCH(req: NextRequest, ctx: Context) {
   const { id } = await ctx.params;
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const body = await req.json();
 
-  const { name, category, colour, season, image_url } = body;
+  const { name, category, colour, material, season, image_url } = body;
   if (!name || !category) {
     return NextResponse.json(
       { error: "Please give the item a name and a category." },
@@ -43,7 +45,7 @@ export async function PATCH(req: NextRequest, ctx: Context) {
 
   const { data, error } = await supabase
     .from("items")
-    .update({ name, category, colour, season, image_url })
+    .update({ name, category, colour, material, season, image_url })
     .eq("id", id)
     .select()
     .single();
@@ -57,7 +59,8 @@ export async function PATCH(req: NextRequest, ctx: Context) {
 // DELETE = remove one item.
 export async function DELETE(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params;
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const { error } = await supabase.from("items").delete().eq("id", id);
   if (error) {

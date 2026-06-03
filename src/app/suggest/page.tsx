@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Item } from "@/lib/types";
+import Mannequin from "@/components/Mannequin";
+import { useItemModal } from "@/components/ItemModalProvider";
 
 // The shape of the answer we get back from /api/suggest.
 type Suggestion = {
@@ -17,6 +19,7 @@ type Suggestion = {
 };
 
 export default function SuggestPage() {
+  const { openAdd } = useItemModal();
   const [result, setResult] = useState<Suggestion | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -134,12 +137,18 @@ export default function SuggestPage() {
               <p className="text-muted text-sm mt-1 mb-4">
                 Add some {result.season} (or &quot;all&quot;-season) items and try again.
               </p>
-              <Link href="/add" className="btn-primary">
+              <button onClick={openAdd} className="btn-primary">
                 + Add an item
-              </Link>
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            <div>
+              {/* The outfit shown as a clean stack */}
+              <div className="mb-6 flex justify-center">
+                <Mannequin items={result.picks} label="Today's look" />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {result.picks.map((item) => (
                 <Link
                   key={item.id}
@@ -164,6 +173,7 @@ export default function SuggestPage() {
                   </div>
                 </Link>
               ))}
+              </div>
             </div>
           )}
         </div>

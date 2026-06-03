@@ -4,9 +4,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 import { BUCKET } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
+  // Must be signed in to upload.
+  const { user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
+  // The storage upload uses the admin client (bypasses storage rules); the
+  // resulting URL is saved on the user's own item row.
   const supabase = getSupabase();
 
   // The browser sends the file as "form data" (not JSON), so we read it that way.

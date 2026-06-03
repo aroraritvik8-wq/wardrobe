@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Item } from "@/lib/types";
+import { useItemModal, ITEMS_CHANGED } from "@/components/ItemModalProvider";
 
 export default function ItemDetailPage() {
   // useParams reads the ":id" out of the URL (/items/5 -> id = "5").
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { openEdit } = useItemModal();
 
   const [item, setItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,14 @@ export default function ItemDetailPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Reload this item after it's edited via the modal.
+  useEffect(() => {
+    const h = () => load();
+    window.addEventListener(ITEMS_CHANGED, h);
+    return () => window.removeEventListener(ITEMS_CHANGED, h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -98,9 +108,9 @@ export default function ItemDetailPage() {
           </div>
 
           <div className="flex flex-wrap gap-2 mt-6">
-            <Link href={`/items/${item.id}/edit`} className="btn-ghost">
+            <button onClick={() => openEdit(item)} className="btn-ghost">
               ✏️ Edit
-            </Link>
+            </button>
             <button onClick={remove} className="btn-danger">
               🗑️ Delete
             </button>

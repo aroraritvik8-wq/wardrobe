@@ -7,8 +7,11 @@ export type Item = {
   name: string;
   category: string;
   colour: string;
+  material: string;
   season: string;
   image_url: string | null;
+  cutout_url?: string | null;
+  mannequin_ok?: boolean | null;
   times_worn: number;
   created_at: string;
 };

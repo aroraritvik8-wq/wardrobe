@@ -1,112 +1,114 @@
-"use client"; // This page runs in the browser so it can react to clicks/typing.
+"use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { Item } from "@/lib/types";
-import { CATEGORIES, SEASONS } from "@/lib/constants";
 import ItemCard from "@/components/ItemCard";
+import { useItemModal, ITEMS_CHANGED } from "@/components/ItemModalProvider";
+
+const LABELS: Record<string, string> = {
+  top: "Tops",
+  bottom: "Bottoms",
+  shoes: "Shoes",
+  outerwear: "Outerwear",
+  dress: "Dresses",
+  accessory: "Accessories",
+};
+
+// Return a new array in random order (Fisher–Yates shuffle).
+function shuffleArray<T>(input: T[]): T[] {
+  const arr = [...input];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 export default function HomePage() {
-  // "state" = values the page remembers and re-draws when they change.
+  return (
+    <Suspense fallback={<GridSkeleton />}>
+      <Browse />
+    </Suspense>
+  );
+}
+
+function Browse() {
+  const sp = useSearchParams();
+  const category = sp.get("category") ?? "";
+  const q = sp.get("q") ?? "";
+
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const { openAdd } = useItemModal();
 
-  // The current filter choices.
-  const [category, setCategory] = useState("");
-  const [season, setSeason] = useState("");
-  const [search, setSearch] = useState("");
+  // Re-fetch the grid whenever an item is added/edited via the modal.
+  useEffect(() => {
+    const h = () => setReload((n) => n + 1);
+    window.addEventListener(ITEMS_CHANGED, h);
+    return () => window.removeEventListener(ITEMS_CHANGED, h);
+  }, []);
 
-  // Build the /api/items URL with whichever filters are set, then fetch.
-  const load = useCallback(async () => {
+  useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (category) params.set("category", category);
-    if (season) params.set("season", season);
-    if (search) params.set("q", search);
+    if (q) params.set("q", q);
+    fetch(`/api/items?${params.toString()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setItems(shuffleArray(Array.isArray(d) ? d : []));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [category, q, reload]);
 
-    const res = await fetch(`/api/items?${params.toString()}`);
-    const data = await res.json();
-    setItems(Array.isArray(data) ? data : []);
-    setLoading(false);
-  }, [category, season, search]);
+  const shuffle = () => setItems((prev) => shuffleArray(prev));
 
-  // Re-load whenever a filter changes (and once when the page first opens).
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const filtersActive = category || season || search;
+  const heading = category
+    ? LABELS[category] ?? category
+    : q
+    ? `Results for “${q}”`
+    : "Today's picks";
+  const filtered = Boolean(category || q);
 
   return (
     <div>
-      <div className="flex items-end justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Wardrobe</h1>
-          <p className="text-muted text-sm mt-1">
-            {loading
-              ? "Loading…"
-              : `${items.length} item${items.length === 1 ? "" : "s"}`}
-          </p>
+      <div className="flex items-center justify-between gap-3 mb-4 min-h-9">
+        {filtered ? <h1 className="text-xl font-bold">{heading}</h1> : <span />}
+        <div className="flex items-center gap-3">
+          {filtered && (
+            <Link href="/" className="text-accent text-[15px] font-semibold hover:underline">
+              Clear
+            </Link>
+          )}
+          <button onClick={shuffle} disabled={loading || items.length < 2} className="btn-ghost">
+            🔀 Shuffle
+          </button>
         </div>
       </div>
 
-      {/* Filter controls, grouped in a card */}
-      <div className="card p-3 mb-8 flex flex-wrap gap-2">
-        <input
-          type="text"
-          placeholder="🔍  Search by name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="field flex-1 min-w-44"
-        />
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="field w-auto capitalize"
-        >
-          <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={season}
-          onChange={(e) => setSeason(e.target.value)}
-          className="field w-auto capitalize"
-        >
-          <option value="">All seasons</option>
-          {SEASONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* The grid (or helpful messages) */}
       {loading ? (
         <GridSkeleton />
       ) : items.length === 0 ? (
-        <div className="card p-10 text-center">
-          <div className="text-5xl mb-3">🧺</div>
-          <p className="font-medium">
-            {filtersActive ? "No items match your filters." : "Your wardrobe is empty."}
+        <div className="bg-surface rounded-lg shadow-sm p-12 text-center">
+          <div className="text-5xl mb-3 opacity-60">🧺</div>
+          <p className="font-semibold text-lg">
+            {filtered ? "No items match." : "Your wardrobe is empty."}
           </p>
-          <p className="text-muted text-sm mt-1 mb-4">
-            {filtersActive
-              ? "Try clearing the search or filters."
-              : "Add your first piece of clothing to get started."}
+          <p className="text-muted text-sm mt-1.5 mb-5">
+            {filtered ? "Try a different category or search." : "Add your first piece to get started."}
           </p>
-          {!filtersActive && (
-            <Link href="/add" className="btn-primary">
-              + Add your first item
-            </Link>
+          {filtered ? (
+            <Link href="/" className="btn-ghost">Clear</Link>
+          ) : (
+            <button onClick={openAdd} className="btn-primary">+ Add your first item</button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
           {items.map((item) => (
             <ItemCard key={item.id} item={item} />
           ))}
@@ -116,14 +118,13 @@ export default function HomePage() {
   );
 }
 
-// A simple grey "loading" placeholder grid, shown while items load.
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="card overflow-hidden animate-pulse">
-          <div className="aspect-square bg-foreground/[0.06]" />
-          <div className="p-3 space-y-2">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="animate-pulse">
+          <div className="aspect-square rounded-lg bg-foreground/[0.06]" />
+          <div className="pt-2 space-y-2">
             <div className="h-3 bg-foreground/[0.06] rounded w-3/4" />
             <div className="h-3 bg-foreground/[0.06] rounded w-1/2" />
           </div>

@@ -39,3 +39,28 @@ create table if not exists outfit_items (
 insert into storage.buckets (id, name, public)
 values ('wardrobe', 'wardrobe', true)
 on conflict (id) do nothing;
+
+
+-- ============================================================
+--  ACCOUNTS / LOGIN  (run this part after adding Google sign-in)
+--  Gives every row an owner and locks the tables so each signed-in
+--  user can only see and change THEIR OWN clothes, outfits, etc.
+-- ============================================================
+
+-- 1) Add an owner column to every table.
+alter table items            add column if not exists user_id uuid references auth.users(id) on delete cascade;
+alter table outfits          add column if not exists user_id uuid references auth.users(id) on delete cascade;
+alter table outfit_items     add column if not exists user_id uuid references auth.users(id) on delete cascade;
+alter table calendar_entries add column if not exists user_id uuid references auth.users(id) on delete cascade;
+
+-- 2) Turn on Row Level Security (locks the tables by default).
+alter table items            enable row level security;
+alter table outfits          enable row level security;
+alter table outfit_items     enable row level security;
+alter table calendar_entries enable row level security;
+
+-- 3) Allow each user to read/write only their own rows.
+create policy "own items"     on items            for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own outfits"   on outfits          for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own links"     on outfit_items     for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own calendar"  on calendar_entries for all using (user_id = auth.uid()) with check (user_id = auth.uid());

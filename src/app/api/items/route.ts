@@ -5,17 +5,20 @@
 // The frontend pages call these; this file talks to Supabase.
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { requireUser } from "@/lib/supabase/server";
 
 // GET = "read". Return the list of items, newest first.
 // Supports optional filters passed as ?category=top&season=summer&q=nike
 export async function GET(req: NextRequest) {
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const { searchParams } = new URL(req.url);
 
+  // Select only the display fields — NOT the big "embedding" vector, which
+  // would make this response huge and slow.
   let query = supabase
     .from("items")
-    .select("*")
+    .select("id,name,category,colour,material,season,image_url,cutout_url,times_worn,created_at")
     .order("created_at", { ascending: false });
 
   // Only add each filter if it was actually provided.
@@ -40,9 +43,10 @@ export async function GET(req: NextRequest) {
 
 // POST = "create". Add a new item to the database.
 export async function POST(req: NextRequest) {
-  const supabase = getSupabase();
+  const { supabase, user } = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const body = await req.json();
-  const { name, category, colour, season, image_url } = body;
+  const { name, category, colour, material, season, image_url } = body;
 
   // Friendly validation: don't crash, just say what's missing.
   if (!name || !category) {
@@ -60,6 +64,8 @@ export async function POST(req: NextRequest) {
       colour: colour || "",
       season: season || "all",
       image_url: image_url || null,
+      material: material || "",
+      user_id: user.id,
     })
     .select()
     .single();

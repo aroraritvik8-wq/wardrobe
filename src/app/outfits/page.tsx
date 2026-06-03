@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Outfit } from "@/lib/types";
+import Mannequin from "@/components/Mannequin";
 
 export default function OutfitsPage() {
   const [outfits, setOutfits] = useState<Outfit[]>([]);
@@ -69,7 +70,11 @@ export default function OutfitsPage() {
                   Delete
                 </button>
               </div>
-              <div className="flex gap-3 flex-wrap">
+              <div className="flex gap-5 flex-col sm:flex-row">
+              <div className="shrink-0">
+                <Mannequin items={outfit.items ?? []} />
+              </div>
+              <div className="flex gap-3 flex-wrap content-start flex-1">
                 {outfit.items?.map((item) => (
                   <Link
                     key={item.id}
@@ -91,6 +96,7 @@ export default function OutfitsPage() {
                     <p className="text-xs mt-1 truncate">{item.name}</p>
                   </Link>
                 ))}
+              </div>
               </div>
             </div>
           ))}
