@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Cropper from "react-easy-crop";
 import type { Area } from "react-easy-crop";
 import "react-easy-crop/react-easy-crop.css";
+import { Sparkles, Camera, Crop as CropIcon, Scissors, Upload, ImageOff } from "lucide-react";
 import type { Item } from "@/lib/types";
 import { CATEGORIES, SEASONS } from "@/lib/constants";
 
@@ -109,10 +110,11 @@ export default function ItemForm({
     };
   }, []);
 
-  // Open the crop tool for a freshly chosen photo (will auto-tag after).
+  // Open the crop tool for a freshly chosen photo. Auto-tagging is NOT run
+  // automatically (it costs money) — the user presses the button for that.
   function startCrop(f: File) {
     setError("");
-    tagAfterCropRef.current = true;
+    tagAfterCropRef.current = false;
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCropSrc(URL.createObjectURL(f));
@@ -131,6 +133,19 @@ export default function ItemForm({
       setCropSrc(URL.createObjectURL(blob));
     } catch {
       setError("Couldn't load this photo to crop.");
+    }
+  }
+
+  // Auto-fill the details from the current photo using AI (costs a little).
+  // Only runs when the user clicks the button.
+  async function autoTagCurrent() {
+    setError("");
+    if (!file && !preview) return;
+    try {
+      const f = file ?? new File([await (await fetch(preview!)).blob()], "photo.jpg", { type: "image/jpeg" });
+      autoTag(f);
+    } catch {
+      setError("Couldn't read the photo to auto-fill.");
     }
   }
 
@@ -342,7 +357,7 @@ export default function ItemForm({
           />
           <div className="flex gap-3">
             <button type="button" onClick={capturePhoto} className="btn-primary">
-              📸 Capture
+              <Camera size={16} /> Capture
             </button>
             <button type="button" onClick={closeCamera} className="btn-ghost">
               Cancel
@@ -397,16 +412,17 @@ export default function ItemForm({
       <div>
         <span className="text-sm font-medium">Photo</span>
         <div className="mt-2 flex items-start gap-4">
-          <div className="w-44 h-44 rounded-xl bg-surface-3 border border-border flex items-center justify-center overflow-hidden shrink-0">
+          <div className="w-56 h-56 rounded-xl bg-surface-3 border border-border flex items-center justify-center overflow-hidden shrink-0">
             {preview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={preview} alt="" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-3xl opacity-40">🧺</span>
+              <span className="text-muted opacity-40"><ImageOff size={44} /></span>
             )}
           </div>
                     <div className="flex flex-col gap-2">
             <label className="btn-ghost cursor-pointer">
+              <Upload size={16} />
               {processing
                 ? "Removing background…"
                 : preview
@@ -420,8 +436,19 @@ export default function ItemForm({
               />
             </label>
             <button type="button" onClick={openCamera} className="btn-ghost">
-              📷 Take photo
+              <Camera size={16} /> Take photo
             </button>
+            {preview && (
+              <button
+                type="button"
+                onClick={autoTagCurrent}
+                disabled={tagging || processing}
+                className="btn-ghost"
+                title="Use AI to fill in the name, category, colour, etc. (costs a little)"
+              >
+                <Sparkles size={16} /> {tagging ? "Filling in…" : "Auto-fill details (AI)"}
+              </button>
+            )}
             {preview && (
               <button
                 type="button"
@@ -429,7 +456,7 @@ export default function ItemForm({
                 disabled={processing}
                 className="btn-ghost"
               >
-                ⛶ Crop
+                <CropIcon size={16} /> Crop
               </button>
             )}
             {preview && (
@@ -439,7 +466,7 @@ export default function ItemForm({
                 disabled={processing}
                 className="btn-ghost"
               >
-                ✂️ Remove background
+                <Scissors size={16} /> Remove background
               </button>
             )}
           </div>
@@ -453,7 +480,7 @@ export default function ItemForm({
       </div>
         {tagging && (
           <p className="text-xs text-muted mt-2">
-            ✨ Auto-filling the details from the photo…
+            Auto-filling the details from the photo…
           </p>
         )}
       <label className="block">
